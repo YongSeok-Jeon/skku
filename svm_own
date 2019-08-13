@@ -1,0 +1,109 @@
+pkgs <- c("quadprog", "Matrix", "Distance", "rdist", "lattice", "MASS","reshape","crayon","ggplot2")
+
+
+
+sapply(pkgs, require, character.only = TRUE)
+
+iris <- read.csv(url("http://bit.ly/flex_iris"),TRUE)
+
+var_data = 1:2   # variable col
+class_data = 6   # class    col
+
+data_train_num <- sample(1:nrow(iris), size = round(0.7 * nrow(iris))) # train ratio
+
+data_train = iris[data_train_num,] # train data
+data_test = iris[-data_train_num,] # test data
+
+svm_cal <- function(p1,p2){ # par_1, par2_
+  res_svm <- list()
+  res = 0
+  
+  data_train$newclass <- data_train[class_data]
+  data_test$newclass <- data_test[class_data]
+  
+  euc_matrix_1 <- t(t(data_train$newclass)) %*% t(data_train$newclass)                                                           # y y^T
+  euc_matrix_2 <- exp((as.matrix(dist(data_train[var_data], method = "euclidean", diag = T, upper = T)**2))*(-p1))            # k(xi,xj)
+  
+  
+  Dmat <- as.matrix((nearPD(euc_matrix_1 * euc_matrix_2))$mat)                                                              # Dmat
+  
+  dvec <- as.matrix(rep(1, nrow(data_train)))                                                                                          # dvec
+  
+  Amat <- t(rbind(t(data_train$newclass), rbind(diag(1, nrow(data_train), nrow(data_train))), diag(-1, nrow(data_train), nrow(data_train))))
+  bvec <- rbind((t(t(rep(0,1)))), (rbind(t(t(rep(0, nrow(data_train)))), t(t(rep(-p2, nrow(data_train)))))))
+  
+  
+  alphas <- solve.QP(Dmat, dvec, Amat, bvec = bvec)$solution
+  
+  bias <- mean(t(t(data_train$newclass)) - (diag(c(t((diag(alphas) %*% t(t(data_train$newclass)))))) %*% (Dmat %*% t(t(dvec)))))
+  xxx <- list()
+  
+  for (k1 in 1:nrow(data_test)){
+    for (k2 in 1:nrow(data_train)){
+      ttt <- exp((cdist(data_test[var_data][k1,], data_train[var_data][k2,], metric = "euclidean", p = 2)**2)*(-p1))
+      xxx <- append(xxx, ttt, after = length(xxx))
+    }
+  }
+  
+  m2 <- matrix(unlist(xxx), nrow = nrow(data_test), ncol = nrow(data_train), byrow = TRUE)
+  m3 <-(alphas * t(data_train$newclass)) #a1y1 a2y2 
+  m4 <- do.call(rbind, replicate(nrow(data_test), m3, simplify=FALSE)) # a1y1 a2y2 many
+  m5 <- m4 * m2
+  m6 <- m5 %*% t(t(dvec))
+  
+  
+  tt = 0
+  
+  
+  for (i in 1:nrow(m6)){
+    if (m6[i] > 0 & data_test[i,class_data] == 1){
+      tt = tt + 1
+    }
+    else if (m6[i] < 0 & data_test[i,class_data] == -1){
+      tt = tt + 1
+    }
+  }
+  
+  
+  return (tt/nrow(m6))
+}
+
+svm <- function(m1,m2,m3,m4){ # min max boundary of (rbf gamma / c) input 
+  
+  list_res <- list()
+  list_gamma <- list()
+  list_c <- list()
+  
+  for (i in 0:(log10(m2) - log10(m1))){
+    list_gamma <- append(list_gamma, m1 * 10^(i), after = length(list_gamma))
+  }
+  
+  for (i in 0:(log10(m4) - log10(m3))){
+    list_c <- append(list_c, m3 * 10^(i), after = length(list_c))
+  }
+  
+  
+  #mat_gamma <-do.call(rbind, replicate(length(list_c), as.matrix(unlist(list_gamma)), simplify = FALSE))
+  #mat_C <-do.call(rbind, replicate(length(list_gamma), as.matrix(unlist(list_c)), simplify = FALSE))
+  
+  for (i1 in 0:(log10(m2) - log10(m1))){
+    for (i2 in 0:(log10(m4) - log10(m3))){
+      list_res <- append(list_res, svm_cal(m1 * 10^(i1), m3 * 10^(i2)), after = length(list_res))
+    }
+  }
+  z_mat <- matrix(unlist(list_res), nrow = length(list_gamma), ncol = length(list_c), dimnames = list(c(list_gamma), c(list_c)), byrow = TRUE)
+  
+  print(z_mat)
+  cat(red(max(z_mat)))
+  cat("\n")
+  
+  
+  
+  
+}
+
+###############################################################################################
+###############################################################################################
+#svm_cal(2^c(0), 2^c(0))
+
+svm(10^-2,10^2,10^-2,10^2)
